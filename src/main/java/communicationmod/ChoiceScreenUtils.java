@@ -69,6 +69,7 @@ public class ChoiceScreenUtils {
 
     public static ChoiceType getCurrentChoiceType() {
         if (!AbstractDungeon.isScreenUp) {
+
             if (AbstractDungeon.getCurrRoom().phase == AbstractRoom.RoomPhase.EVENT || (AbstractDungeon.getCurrRoom().event != null && AbstractDungeon.getCurrRoom().phase == AbstractRoom.RoomPhase.COMPLETE)) {
                 return ChoiceType.EVENT;
             } else if (AbstractDungeon.getCurrRoom() instanceof TreasureRoomBoss || AbstractDungeon.getCurrRoom() instanceof TreasureRoom) {
@@ -529,7 +530,7 @@ public class ChoiceScreenUtils {
     public static ArrayList<String> getBossRewardScreenChoices() {
         ArrayList<String> choices = new ArrayList<>();
         for(AbstractRelic relic : AbstractDungeon.bossRelicScreen.relics) {
-            choices.add(relic.name);
+            choices.add(relic.relicId);
         }
         return choices;
     }
@@ -586,7 +587,7 @@ public class ChoiceScreenUtils {
             } else if (item instanceof AbstractCard) {
                 choices.add(((AbstractCard) item).name.toLowerCase());
             } else if (item instanceof StoreRelic) {
-                choices.add(((StoreRelic)item).relic.name);
+                choices.add(((StoreRelic)item).relic.relicId);
             } else if (item instanceof StorePotion) {
                 choices.add(((StorePotion)item).potion.name);
             }

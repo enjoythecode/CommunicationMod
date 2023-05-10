@@ -26,6 +26,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import communicationmod.CommunicationModStateReceiverI;
+
 @SpireInitializer
 public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSubscriber, PostDungeonUpdateSubscriber, PreUpdateSubscriber, OnStateChangeSubscriber {
 
@@ -42,6 +44,7 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
     private static final String DESCRIPTION = "This mod communicates with an external program to play Slay the Spire.";
     public static boolean mustSendGameState = false;
     private static ArrayList<OnStateChangeSubscriber> onStateChangeSubscribers;
+    private static ArrayList<CommunicationModStateReceiverI> stateReceivers = new ArrayList<CommunicationModStateReceiverI>();
 
     private static SpireConfig communicationConfig;
     private static final String COMMAND_OPTION = "command";
@@ -50,7 +53,7 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
     private static final String INITIALIZATION_TIMEOUT_OPTION = "maxInitializationTimeout";
     private static final String DEFAULT_COMMAND = "";
     private static final long DEFAULT_TIMEOUT = 10L;
-    private static final boolean DEFAULT_VERBOSITY = true;
+    private static final boolean DEFAULT_VERBOSITY = false;
 
     public CommunicationMod(){
         BaseMod.subscribe(this);
@@ -83,26 +86,61 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
         CommunicationMod mod = new CommunicationMod();
     }
 
-    public void receivePreUpdate() {
-        if(listener != null && !listener.isAlive() && writeThread != null && writeThread.isAlive()) {
+    public static void subscribeToGameStates(CommunicationModStateReceiverI subscriber) {
+        stateReceivers.add(subscriber);
+    }
+
+    public static void executeMessage(String message) {
+        try {
+            logger.info("Read this message, executing: " + message);
+            boolean stateChanged = CommandExecutor.executeCommand(message);
+            if(stateChanged) {
+                GameStateListener.registerCommandExecution();
+            }
+        } catch (InvalidCommandException e) {
+            logger.error("Invalid command received, can't execute!");
+            HashMap<String, Object> jsonError = new HashMap<>();
+            jsonError.put("error", e.getMessage());
+            jsonError.put("ready_for_command", GameStateListener.isWaitingForCommand());
+            Gson gson = new Gson();
+            sendMessage(gson.toJson(jsonError));
+        }
+    }
+    // caller must ensure messageAvailable() == True!
+    public static void retrieveMessageAndExecute() {
+        String message = readMessage();
+        executeMessage(message);
+    }
+
+    public static void waitForMessageAndExecute() {
+        if(listener != null && !listener.isAlive() &&
+           writeThread != null && writeThread.isAlive()) {
+
             logger.info("Child process has died...");
             writeThread.interrupt();
             readThread.interrupt();
         }
-        if(messageAvailable()) {
-            try {
-                boolean stateChanged = CommandExecutor.executeCommand(readMessage());
-                if(stateChanged) {
-                    GameStateListener.registerCommandExecution();
-                }
-            } catch (InvalidCommandException e) {
-                HashMap<String, Object> jsonError = new HashMap<>();
-                jsonError.put("error", e.getMessage());
-                jsonError.put("ready_for_command", GameStateListener.isWaitingForCommand());
-                Gson gson = new Gson();
-                sendMessage(gson.toJson(jsonError));
-            }
+        while(!messageAvailable()) {
+            // pass
         }
+        retrieveMessageAndExecute();
+    }
+
+    public static void listenForMessageAndExecute(){
+        /*if(listener != null && !listener.isAlive() &&
+           writeThread != null && writeThread.isAlive()) {
+
+            logger.info("Child process has died...");
+            writeThread.interrupt();
+            readThread.interrupt();
+        }*/
+        if(messageAvailable()) {
+            retrieveMessageAndExecute();
+        }
+    }
+        
+    public void receivePreUpdate() {
+        CommunicationMod.listenForMessageAndExecute();
     }
 
     public static void subscribe(OnStateChangeSubscriber sub) {
@@ -227,8 +265,9 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
         readThread.start();
     }
 
-    private static void sendGameState() {
+    public static void sendGameState() {
         String state = GameStateConverter.getCommunicationState();
+        logger.info("Sending game state");
         sendMessage(state);
     }
 
@@ -240,9 +279,14 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
     }
 
     private static void sendMessage(String message) {
+        for(CommunicationModStateReceiverI receiver : stateReceivers) {
+            receiver.receiveGameState(message);
+        }
+        /*
         if(writeQueue != null && writeThread.isAlive()) {
             writeQueue.add(message);
         }
+        */
     }
 
     private static boolean messageAvailable() {

@@ -152,7 +152,11 @@ public class CommandExecutor {
 
     public static boolean isChooseCommandAvailable() {
         if(isInDungeon()) {
-            return !isPlayCommandAvailable() && !ChoiceScreenUtils.getCurrentChoiceList().isEmpty();
+            if(!isPlayCommandAvailable() && !ChoiceScreenUtils.getCurrentChoiceList().isEmpty()){
+                return true;
+            } else {
+                return false;
+            }
         } else {
             return false;
         }
